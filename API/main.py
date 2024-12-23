@@ -25,17 +25,21 @@ love_sent = {
 }
 
 # Just using root since it's not a complex API
-@app.get("/{key}", status_code=200)
+@app.get("/", status_code=200)
 def read_root(key: str, user_identifier: int):
     if key != LOVE_KEY:
         raise HTTPException(status_code=403, detail="Invalid key, this isn't for you...")
     
     # Checks if the other use sent love within two minutes.
-    if datetime.now() - love_sent[users[user_identifier]] < timedelta(seconds=10):
-        return {"love_recieved": True}
-    
+    # Probably not optimal but it's a simple solution for a simple problem
+    if datetime.now() - love_sent[users[user_identifier]] < timedelta(seconds=10) and datetime:
+        if datetime.now() - love_sent[user_identifier] < timedelta(seconds=10):
+            return {"love_recieved": True, "sharing_love": True}
+        
+        return {"love_recieved": True, "sharing_love": False}
+        
     else:
-        return {"love_recieved": False}
+        return {"love_recieved": False, "sharing_love": False}
 
 # Sends love to the other user
 @app.post("/send_love", status_code=201)
