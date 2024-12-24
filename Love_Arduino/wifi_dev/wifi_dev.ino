@@ -21,9 +21,12 @@
 
 ESP8266WiFiMulti WiFiMulti;
 
+unsigned long previousMillis = 0;     // Stores the last time the task ran
+const long listener_interval = 10000; // how long to listen to button press
+unsigned long currentMillis = 0;
+
 void setup()
 {
-
     Serial.begin(115200);
     // Serial.setDebugOutput(true);
 
@@ -36,63 +39,84 @@ void setup()
     Serial.println("setup() done connecting to ssid '" STASSID "'");
 }
 
-void loop()
+void ensure_connection()
 {
-    // wait for WiFi connection
-    if ((WiFiMulti.run() == WL_CONNECTED))
+    if ((WiFi.status() == 0))
     {
+        if (WiFiMulti.run() != WL_CONNECTED) {
+            Serial.println("WiFi not connected!");
+        } else {
+            Serial.println("WiFi connected");
+        }
+    }
+}
 
-        auto client = std::make_unique<BearSSL::WiFiClientSecure>();
+std::tuple<bool, bool, bool> check_for_love()
+{
+    auto client = std::make_unique<BearSSL::WiFiClientSecure>();
 
-        client->setInsecure();
+    client->setInsecure();
 
-        HTTPClient https;
+    HTTPClient https;
 
-        Serial.print("[HTTPS] begin...\n");
+    Serial.print("[HTTPS] begin...\n");
 
-        // Checks for incoming love
-        String host = "https://" + String(jigsaw_host) + "/" + user_key + "?user_identifier=" + user_id;
+    // Checks for incoming love
+    String host = "https://" + String(jigsaw_host) + "/?key=" + user_key + "&user_identifier=" + user_id;
 
-        Serial.print("URL:");
-        Serial.println(host);
+    Serial.print("URL:");
+    Serial.println(host);
 
-        if (https.begin(*client, host))
-        { // HTTPS
+    if (https.begin(*client, host))
+    {
+        Serial.print("[HTTPS] GET...\n");
+        // start connection and send HTTP header
+        int httpCode = https.GET();
 
-            Serial.print("[HTTPS] GET...\n");
-            // start connection and send HTTP header
-            int httpCode = https.GET();
+        // httpCode will be negative on error
+        if (httpCode > 0)
+        {
+            // HTTP header has been send and Server response header has been handled
+            Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
 
-            // httpCode will be negative on error
-            if (httpCode > 0)
+            // file found at server
+            if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
             {
-                // HTTP header has been send and Server response header has been handled
-                Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+                String payload = https.getString();
+                JsonDocument response;
 
-                // file found at server
-                if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
-                {
-                    String payload = https.getString();
-                    // String payload = https.getString(1024);  // optionally pre-reserve string to avoid reallocations in chunk mode
-                    JsonDocument json_doc;
+                deserializeJson(response, payload);
 
-                    deserializeJson(json_doc, json);
-                    Serial.println(payload);
-                }
+                bool love_received = response["love_received"];
+                bool sharing_love = response["sharing_love"];
+                Serial.printf("Love Received: %d\n", love_received);
+                Serial.printf("Sharing Love: %d\n", sharing_love);
+
+                return std::make_tuple(true, love_received, sharing_love);
             }
-            else
-            {
-                Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
-            }
-
-            https.end();
         }
         else
         {
-            Serial.printf("[HTTPS] Unable to connect\n");
+            Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
         }
+
+        https.end();
     }
 
-    Serial.println("Wait 10s before next round...");
-    delay(10000);
+    return std::make_tuple(false, false, false);
+}
+
+void loop()
+{
+    currentMillis = millis();
+    ensure_connection();
+
+    // Less time than the interval
+    if (currentMillis - previousMillis >= listener_interval)
+    {
+        check_for_love();
+
+        // save the last time you listened
+        previousMillis = currentMillis;
+    }
 }
