@@ -32,8 +32,8 @@ def read_root(key: str, user_identifier: int):
     
     # Checks if the other use sent love within two minutes.
     # Probably not optimal but it's a simple solution for a simple problem
-    if datetime.now() - love_sent[users[user_identifier]] < timedelta(seconds=10) and datetime:
-        if datetime.now() - love_sent[user_identifier] < timedelta(seconds=10):
+    if datetime.now() - love_sent[users[user_identifier]] < timedelta(seconds=120) and datetime:
+        if datetime.now() - love_sent[user_identifier] < timedelta(seconds=120):
             return {"love_recieved": True, "sharing_love": True}
         
         return {"love_recieved": True, "sharing_love": False}
