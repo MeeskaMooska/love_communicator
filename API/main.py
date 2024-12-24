@@ -34,12 +34,12 @@ def read_root(key: str, user_identifier: int):
     # Probably not optimal but it's a simple solution for a simple problem
     if datetime.now() - love_sent[users[user_identifier]] < timedelta(seconds=120) and datetime:
         if datetime.now() - love_sent[user_identifier] < timedelta(seconds=120):
-            return {"love_recieved": True, "sharing_love": True}
+            return {"love_received": True, "sharing_love": True}
         
-        return {"love_recieved": True, "sharing_love": False}
+        return {"love_received": True, "sharing_love": False}
         
     else:
-        return {"love_recieved": False, "sharing_love": False}
+        return {"love_received": False, "sharing_love": False}
 
 # Sends love to the other user
 @app.post("/send_love", status_code=201)

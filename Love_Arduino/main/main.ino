@@ -9,9 +9,9 @@
 #include "certs.h"
 #include "credentials.h"
 
-const int buttonPin = D1;		// Pin connected to the button
-const int ledPin = D4;			// Pin connected to the LED
-const long ledInterval = 12000; // 2 minutes
+const int buttonPin = D1;		 // Pin connected to the button
+const int ledPin = D4;			 // Pin connected to the LED
+const long ledInterval = 120000; // 2 minutes
 
 bool buttonClicked;
 unsigned long previousMillisLoveChecked = 0; // Stores the last time the task ran
@@ -20,6 +20,9 @@ unsigned long currentMillisLoveChecked = 0;
 unsigned long previousMillisLoveSentLED = 0; // Stores the last time the task ran
 unsigned long currentMillisLoveSentLED = 0;
 bool loveSent = false;
+
+unsigned long currentMillisScreen = 0;
+unsigned long previousMillisScreen = 0;
 
 bool showHeart = false;
 bool loveShared = false;
@@ -33,7 +36,7 @@ const int listenerInterval = 10000;
 #endif
 #define CLK D6
 #define CS D7
-#define DIN D5
+#define DIN D8
 
 ESP8266WiFiMulti WiFiMulti;
 LedControl led_control = LedControl(DIN, CLK, CS, 1);
@@ -56,186 +59,191 @@ void setup()
 	buttonClicked = false;
 
 	// Initialize the MAX7219 module
-    led_control.shutdown(0, false); // Wake up the display
-    led_control.setIntensity(0, 1); // Set low brightness
-    led_control.clearDisplay(0);    // Clear the display
+	led_control.shutdown(0, false); // Wake up the display
+	led_control.setIntensity(0, 1); // Set low brightness
+	led_control.clearDisplay(0);	// Clear the display
 
-    Serial.println("Initialization complete.");
+	Serial.println("Initialization complete.");
 
 	WiFi.mode(WIFI_STA);
-    WiFiMulti.addAP(STASSID, STAPSK);
-    Serial.println("setup() done connecting to ssid '" STASSID "'");
+	WiFiMulti.addAP(STASSID, STAPSK);
+	Serial.println("setup() done connecting to ssid '" STASSID "'");
 }
 
 void draw_heart()
 {
-    for (int i = 0; i < 8; i++)
-    {
-        led_control.setRow(0, i, HEART[i]); // Send each row of the HEART pattern
-    }
+	for (int i = 0; i < 8; i++)
+	{
+		led_control.setRow(0, i, HEART[i]); // Send each row of the HEART pattern
+	}
 }
 
 // Draws an X on error
 void draw_x()
 {
 	for (int i = 0; i < 8; i++)
-    {
-        led_control.setRow(0, i, X[i]); // Send each row of the X pattern
-    }
+	{
+		led_control.setRow(0, i, X[i]); // Send each row of the X pattern
+	}
 }
 
 void handle_heart()
 {
-	currentMillis = millis();
+	currentMillisScreen = millis();
 
-	// Check if it's time to update the display
-	if (loveShared)
+	if (loveReceived)
 	{
-		if (currentMillis - previousMillis >= heartbeatInterval)
+		// Check if it's time to update the display
+		if (loveShared)
 		{
-			previousMillis = currentMillis; // Update the timer
-
-			if (showHeart)
+			if (currentMillisScreen - previousMillisScreen >= heartbeatInterval)
 			{
-				draw_heart(); // Show the heart
-			}
-			else
-			{
-				led_control.clearDisplay(0); // Clear the display
-			}
+				previousMillisScreen = currentMillisScreen; // Update the timer
 
-			showHeart = !showHeart; // Toggle the state
+				if (showHeart)
+				{
+					draw_heart(); // Show the heart
+				}
+				else
+				{
+					led_control.clearDisplay(0); // Clear the display
+				}
+
+				showHeart = !showHeart; // Toggle the state
+			}
 		}
-	}
-	else
-	{
-		draw_heart();
+		else
+		{
+			draw_heart();
+		}
 	}
 }
 
 void ensure_connection()
 {
-    if ((WiFi.status() == 0))
-    {
-        if (WiFiMulti.run() != WL_CONNECTED) {
-            Serial.println("WiFi not connected!");
-        } else {
-            Serial.println("WiFi connected");
-        }
-    }
+	if ((WiFi.status() == 0))
+	{
+		if (WiFiMulti.run() != WL_CONNECTED)
+		{
+			Serial.println("WiFi not connected!");
+		}
+		else
+		{
+			Serial.println("WiFi connected");
+		}
+	}
 }
 
 std::tuple<bool, bool, bool> check_for_love()
 {
-    auto client = std::make_unique<BearSSL::WiFiClientSecure>();
+	auto client = std::make_unique<BearSSL::WiFiClientSecure>();
 
-    client->setInsecure();
+	client->setInsecure();
 
-    HTTPClient https;
+	HTTPClient https;
 
-    Serial.print("[HTTPS] begin...\n");
+	Serial.print("[HTTPS] begin...\n");
 
-    // Checks for incoming love
-    String host = "https://" + String(jigsaw_host) + "/?key=" + user_key + "&user_identifier=" + user_id;
+	// Checks for incoming love
+	String host = "https://" + String(jigsaw_host) + "/?key=" + user_key + "&user_identifier=" + user_id;
 
-    Serial.print("URL:");
-    Serial.println(host);
+	Serial.print("URL:");
+	Serial.println(host);
 
-    if (https.begin(*client, host))
-    {
-        Serial.print("[HTTPS] GET...\n");
-        // start connection and send HTTP header
-        int httpCode = https.GET();
+	if (https.begin(*client, host))
+	{
+		Serial.print("[HTTPS] GET...\n");
+		// start connection and send HTTP header
+		int httpCode = https.GET();
 
-        // httpCode will be negative on error
-        if (httpCode > 0)
-        {
-            // HTTP header has been send and Server response header has been handled
-            Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+		// httpCode will be negative on error
+		if (httpCode > 0)
+		{
+			// HTTP header has been send and Server response header has been handled
+			Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
 
-            // file found at server
-            if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
-            {
-                String payload = https.getString();
-                JsonDocument response;
+			// file found at server
+			if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+			{
+				String payload = https.getString();
+				JsonDocument response;
 
-                deserializeJson(response, payload);
+				deserializeJson(response, payload);
 
-                bool love_received = response["love_received"];
-                bool sharing_love = response["sharing_love"];
-                Serial.printf("Love Received: %d\n", love_received);
-                Serial.printf("Sharing Love: %d\n", sharing_love);
+				bool love_received = response["love_received"];
+				bool sharing_love = response["sharing_love"];
+				Serial.printf("Love Received: %d\n", love_received);
+				Serial.printf("Sharing Love: %d\n", sharing_love);
 
-                return std::make_tuple(true, love_received, sharing_love);
-            }
-        }
-        else
-        {
-            Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
-        }
+				return std::make_tuple(true, love_received, sharing_love);
+			}
+		}
+		else
+		{
+			Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+		}
 
-        https.end();
-    }
+		https.end();
+	}
 
-    return std::make_tuple(false, false, false);
+	return std::make_tuple(false, false, false);
 }
 
 std::tuple<bool, bool> send_love()
 {
 	auto client = std::make_unique<BearSSL::WiFiClientSecure>();
 
-    client->setInsecure();
+	client->setInsecure();
 
-    HTTPClient https;
+	HTTPClient https;
 
-    Serial.print("[HTTPS] begin...\n");
+	Serial.print("[HTTPS] begin...\n");
 
-    // Checks for incoming love
-    String host = "https://" + String(jigsaw_host) + "/send_love?key=" + user_key + "&user_identifier=" + user_id;
+	// Checks for incoming love
+	String host = "https://" + String(jigsaw_host) + "/send_love?key=" + user_key + "&user_identifier=" + user_id;
 
-    Serial.print("URL:");
-    Serial.println(host);
+	Serial.print("URL:");
+	Serial.println(host);
 
-    if (https.begin(*client, host))
-    {
-        Serial.print("[HTTPS] POST...\n");
-        // start connection and send HTTP header
-        int httpCode = https.POST("");
+	if (https.begin(*client, host))
+	{
+		Serial.print("[HTTPS] POST...\n");
+		// start connection and send HTTP header
+		int httpCode = https.POST("");
 
-        // httpCode will be negative on error
-        if (httpCode > 0)
-        {
-            // HTTP header has been send and Server response header has been handled
-            Serial.printf("[HTTPS] POST... code: %d\n", httpCode);
+		// httpCode will be negative on error
+		if (httpCode > 0)
+		{
+			// HTTP header has been send and Server response header has been handled
+			Serial.printf("[HTTPS] POST... code: %d\n", httpCode);
 
-            // file found at server
-            if (httpCode == HTTP_CODE_CREATED || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
-            {
-                String payload = https.getString();
-                JsonDocument response;
+			// file found at server
+			if (httpCode == HTTP_CODE_CREATED || httpCode == HTTP_CODE_MOVED_PERMANENTLY)
+			{
+				String payload = https.getString();
+				JsonDocument response;
 
-                deserializeJson(response, payload);
+				deserializeJson(response, payload);
 
-                bool love_sent = response["love_sent"];
-                Serial.printf("Love Sent: %d\n", love_sent);
+				bool love_sent = response["love_sent"];
+				Serial.printf("Love Sent: %d\n", love_sent);
 
-                return std::make_tuple(true, love_sent);
-            }
-        }
-        else
-        {
-            Serial.printf("[HTTPS] POST... failed, error: %s\n", https.errorToString(httpCode).c_str());
-        }
+				return std::make_tuple(true, love_sent);
+			}
+		}
+		else
+		{
+			Serial.printf("[HTTPS] POST... failed, error: %s\n", https.errorToString(httpCode).c_str());
+		}
 
-        https.end();
-    }
+		https.end();
+	}
 
-    return std::make_tuple(false, false);
+	return std::make_tuple(false, false);
 }
 
 void loop()
 {
-	Serial.println("Looping...");
 	// Make sure we are connected to the wifi
 	ensure_connection();
 
@@ -247,26 +255,23 @@ void loop()
 		if (!buttonClicked)
 		{
 			std::tuple<bool, bool> loveSentResponse = send_love();
-			
+
 			if (std::get<0>(loveSentResponse) && std::get<1>(loveSentResponse))
 			{
 				buttonClicked = true;
 				loveSent = true;
 
 				previousMillisLoveSentLED = millis();
-
 				Serial.println("Love sent");
 			}
 			else
 			{
-				Serial.println("Error sending love");
 				draw_x();
 			}
 		}
 	}
 	else
 	{
-		Serial.println("Button not pressed");
 		buttonClicked = false;
 	}
 
@@ -282,7 +287,9 @@ void loop()
 			loveSent = false;
 
 			digitalWrite(ledPin, LOW); // Turn off the LED
-		} else {
+		}
+		else
+		{
 			digitalWrite(ledPin, HIGH); // Turn on the LED
 		}
 	}
@@ -290,11 +297,25 @@ void loop()
 	currentMillisLoveChecked = millis();
 
 	// More or equal time than the interval
-    if (currentMillisLoveChecked - previousMillisLoveChecked >= listenerInterval)
-    {
-        std::tuple<bool, bool> checkForLoveReponse = check_for_love();
+	if (currentMillisLoveChecked - previousMillisLoveChecked >= listenerInterval)
+	{
+		std::tuple<bool, bool, bool> checkForLoveReponse = check_for_love();
 
-        // save the last time you listened
-        previousMillisLoveChecked = currentMillisLoveChecked;
-    }
+		if (std::get<0>(checkForLoveReponse))
+		{
+			loveReceived = std::get<1>(checkForLoveReponse);
+			loveShared = std::get<2>(checkForLoveReponse);
+
+			Serial.println("Love received");
+		}
+		else
+		{
+			draw_x();
+		}
+
+		// Save the last time we listened
+		previousMillisLoveChecked = currentMillisLoveChecked;
+	}
+
+	handle_heart();
 }
