@@ -20,8 +20,8 @@ users = {
 
 # No love sent yet
 love_sent = {
-    0: START_TIME,
-    1: START_TIME
+    0: START_TIME - timedelta(seconds=121),
+    1: START_TIME - timedelta(seconds=121)
 }
 
 # Just using root since it's not a complex API
